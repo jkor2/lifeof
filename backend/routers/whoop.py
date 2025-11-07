@@ -262,7 +262,7 @@ def extract_date(ts):
 def sync_latest_whoop_data():
     """
     Fetches the *most recent* WHOOP recovery, sleep, and workout data (limit=1 each)
-    and inserts them into the Supabase tables with record_date (skips duplicate recovery).
+    and inserts them into Supabase tables (skips duplicate recovery).
     """
     tokens = ensure_valid_token()
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
@@ -274,6 +274,18 @@ def sync_latest_whoop_data():
     }
 
     results = {}
+
+    def extract_date(ts):
+        if not ts:
+            return None
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00")).date().isoformat()
+        except Exception:
+            return None
+
+    def to_hours(ms):
+        return round((ms or 0) / 1000 / 60 / 60, 2)
+
     for key, url in endpoints.items():
         r = requests.get(url, headers=headers)
         if r.status_code != 200:
@@ -286,12 +298,21 @@ def sync_latest_whoop_data():
             continue
 
         record = data[0]
+
+        # =====================================================
+        # 🟩 Recovery
+        # =====================================================
         if key == "recovery":
             score = record.get("score") or {}
             record_date = extract_date(record.get("created_at"))
 
-            # ⚠️ Skip if recovery already exists for this date
-            existing = SUPABASE.table("whoop_recovery").select("record_date").eq("record_date", record_date).execute()
+            # Skip if duplicate
+            existing = (
+                SUPABASE.table("whoop_recovery")
+                .select("record_date")
+                .eq("record_date", record_date)
+                .execute()
+            )
             if existing.data:
                 results[key] = {"message": f"⚠️ Recovery for {record_date} already exists — skipped"}
                 continue
@@ -306,24 +327,47 @@ def sync_latest_whoop_data():
                 "record_date": record_date,
             }
             SUPABASE.table("whoop_recovery").insert(insert).execute()
+            results[key] = {"message": "✅ Inserted latest recovery"}
 
+        # =====================================================
+        # 😴 Sleep
+        # =====================================================
         elif key == "sleep":
             score = record.get("score") or {}
             stage = score.get("stage_summary") or {}
+            needed = score.get("sleep_needed") or {}
+
             insert = {
                 "id": str(record.get("id")),
                 "cycle_id": str(record.get("cycle_id")),
                 "start": str(record.get("start")),
                 "end": str(record.get("end")),
+                "timezone_offset": str(record.get("timezone_offset")),
+                "nap": str(record.get("nap", False)),
+                "score_state": str(record.get("score_state")),
                 "sleep_performance_percentage": str(score.get("sleep_performance_percentage")),
                 "sleep_efficiency_percentage": str(score.get("sleep_efficiency_percentage")),
-                "rem_sleep_hours": str((stage.get("total_rem_sleep_time_milli") or 0) / 3600000.0),
-                "deep_sleep_hours": str((stage.get("total_slow_wave_sleep_time_milli") or 0) / 3600000.0),
+                "sleep_consistency_percentage": str(score.get("sleep_consistency_percentage")),
                 "respiratory_rate": str(score.get("respiratory_rate")),
+                "light_sleep_hours": str(to_hours(stage.get("total_light_sleep_time_milli"))),
+                "deep_sleep_hours": str(to_hours(stage.get("total_slow_wave_sleep_time_milli"))),
+                "rem_sleep_hours": str(to_hours(stage.get("total_rem_sleep_time_milli"))),
+                "total_in_bed_hours": str(to_hours(stage.get("total_in_bed_time_milli"))),
+                "total_awake_hours": str(to_hours(stage.get("total_awake_time_milli"))),
+                "disturbance_count": str(stage.get("disturbance_count")),
+                "sleep_cycle_count": str(stage.get("sleep_cycle_count")),
+                "baseline_need_hours": str(to_hours(needed.get("baseline_milli"))),
+                "need_from_sleep_debt_hours": str(to_hours(needed.get("need_from_sleep_debt_milli"))),
+                "need_from_strain_hours": str(to_hours(needed.get("need_from_recent_strain_milli"))),
                 "record_date": extract_date(record.get("end")),
             }
-            SUPABASE.table("whoop_sleep").upsert(insert).execute()
 
+            SUPABASE.table("whoop_sleep").upsert(insert).execute()
+            results[key] = {"message": "✅ Inserted latest sleep"}
+
+        # =====================================================
+        # 🏋️ Workouts
+        # =====================================================
         elif key == "workouts":
             score = record.get("score") or {}
             insert = {
@@ -338,8 +382,7 @@ def sync_latest_whoop_data():
                 "record_date": extract_date(record.get("end")),
             }
             SUPABASE.table("whoop_workouts").upsert(insert).execute()
-
-        results[key] = {"message": "Inserted latest record ✅"}
+            results[key] = {"message": "✅ Inserted latest workout"}
 
     return {
         "message": "✅ WHOOP latest data synced successfully",

@@ -25,19 +25,14 @@ with open("whoop_full_data.json", "r") as f:
 summary = {}
 
 def to_str(value):
-    """Convert any value safely to string or None."""
     if value is None:
         return None
     return str(value)
 
 def safe_get(d, key):
-    """Safely get nested key."""
-    if not isinstance(d, dict):
-        return None
-    return d.get(key)
+    return d.get(key) if isinstance(d, dict) else None
 
 def extract_date(ts):
-    """Extract YYYY-MM-DD from WHOOP timestamps."""
     if not ts:
         return None
     try:
@@ -45,8 +40,10 @@ def extract_date(ts):
     except Exception:
         return None
 
+def to_hours(ms):
+    return round((ms or 0) / 1000 / 60 / 60, 2)
+
 def batch_upsert(table, data, batch_size=200, retries=3):
-    """Upsert in safe chunks with retries to avoid SSL drops."""
     total = len(data)
     for i in range(0, total, batch_size):
         chunk = data[i : i + batch_size]
@@ -86,7 +83,7 @@ for r in full_data.get("recovery", []):
         "hrv_rmssd_milli": to_str(safe_get(score, "hrv_rmssd_milli")),
         "spo2_percentage": to_str(safe_get(score, "spo2_percentage")),
         "skin_temp_celsius": to_str(safe_get(score, "skin_temp_celsius")),
-        "record_date": extract_date(r.get("created_at")),  # 🕐 Added
+        "record_date": extract_date(r.get("created_at")),
     })
 
 if recovery:
@@ -101,17 +98,31 @@ sleep = []
 for s in full_data.get("sleep", []):
     score = s.get("score") or {}
     stage = score.get("stage_summary") or {}
+    needed = score.get("sleep_needed") or {}
+
     sleep.append({
         "id": to_str(s.get("id")),
         "cycle_id": to_str(s.get("cycle_id")),
         "start": to_str(s.get("start")),
         "end": to_str(s.get("end")),
+        "timezone_offset": to_str(s.get("timezone_offset")),
+        "nap": str(s.get("nap", False)),
+        "score_state": to_str(s.get("score_state")),
         "sleep_performance_percentage": to_str(safe_get(score, "sleep_performance_percentage")),
         "sleep_efficiency_percentage": to_str(safe_get(score, "sleep_efficiency_percentage")),
-        "rem_sleep_hours": to_str((safe_get(stage, "total_rem_sleep_time_milli") or 0) / 3600000.0),
-        "deep_sleep_hours": to_str((safe_get(stage, "total_slow_wave_sleep_time_milli") or 0) / 3600000.0),
+        "sleep_consistency_percentage": to_str(safe_get(score, "sleep_consistency_percentage")),
         "respiratory_rate": to_str(safe_get(score, "respiratory_rate")),
-        "record_date": extract_date(s.get("end")),  # 🕐 Added
+        "light_sleep_hours": str(to_hours(safe_get(stage, "total_light_sleep_time_milli"))),
+        "deep_sleep_hours": str(to_hours(safe_get(stage, "total_slow_wave_sleep_time_milli"))),
+        "rem_sleep_hours": str(to_hours(safe_get(stage, "total_rem_sleep_time_milli"))),
+        "total_in_bed_hours": str(to_hours(safe_get(stage, "total_in_bed_time_milli"))),
+        "total_awake_hours": str(to_hours(safe_get(stage, "total_awake_time_milli"))),
+        "disturbance_count": to_str(safe_get(stage, "disturbance_count")),
+        "sleep_cycle_count": to_str(safe_get(stage, "sleep_cycle_count")),
+        "baseline_need_hours": str(to_hours(safe_get(needed, "baseline_milli"))),
+        "need_from_sleep_debt_hours": str(to_hours(safe_get(needed, "need_from_sleep_debt_milli"))),
+        "need_from_strain_hours": str(to_hours(safe_get(needed, "need_from_recent_strain_milli"))),
+        "record_date": extract_date(s.get("end")),
     })
 
 if sleep:
@@ -134,7 +145,7 @@ for w in full_data.get("workouts", []):
         "kilojoule": to_str(safe_get(score, "kilojoule")),
         "distance_meter": to_str(safe_get(score, "distance_meter")),
         "altitude_gain_meter": to_str(safe_get(score, "altitude_gain_meter")),
-        "record_date": extract_date(w.get("end")),  # 🕐 Added
+        "record_date": extract_date(w.get("end")),
     })
 
 if workouts:
