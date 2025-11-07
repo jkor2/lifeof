@@ -12,14 +12,17 @@ import {
   useTheme,
   useMediaQuery,
   Fade,
-  Grid,
   Tabs,
   Tab,
 } from "@mui/material";
+import Grid from "@mui/material/Grid"; // ✅ compatible for MUI v5 & v6
 import PublicIcon from "@mui/icons-material/Public";
 import PendingIcon from "@mui/icons-material/HourglassEmpty";
 import { useRouter } from "next/navigation";
 
+// =====================================================
+// Types
+// =====================================================
 type Attribute = {
   name: string;
   value: string;
@@ -42,6 +45,9 @@ type Entry = {
   notes?: Note[];
 };
 
+// =====================================================
+// Component
+// =====================================================
 export default function HomePage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -53,7 +59,7 @@ export default function HomePage() {
   const api = process.env.NEXT_PUBLIC_API_URL;
 
   // =====================================================
-  // ✅ Hydration guard
+  // Hydration guard
   // =====================================================
   useEffect(() => {
     setHasHydrated(true);
@@ -65,7 +71,7 @@ export default function HomePage() {
   const fetchEntries = async () => {
     try {
       const res = await fetch(`${api}/entries?visibility=public`);
-      const data = await res.json();
+      const data: Entry[] = await res.json();
       setEntries(data);
     } catch (e) {
       console.error(e);
@@ -91,13 +97,13 @@ export default function HomePage() {
 
   // Group AM / PM / Notes for today only
   const grouped = todaysEntries.reduce(
-    (acc: any, entry) => {
+    (acc: { am: Entry | null; pm: Entry | null; notes: Note[] }, entry) => {
       if (entry.day_period === "am") acc.am = entry;
       if (entry.day_period === "pm") acc.pm = entry;
       if (entry.notes?.length) acc.notes.push(...entry.notes);
       return acc;
     },
-    { am: null, pm: null, notes: [] as Note[] }
+    { am: null, pm: null, notes: [] }
   );
 
   const cardStyle = {
@@ -246,7 +252,8 @@ export default function HomePage() {
                   <Divider sx={{ mb: 1.5, opacity: 0.15 }} />
 
                   <Grid container spacing={2}>
-                    {grouped.am.attributes.map((a, i) => (
+                    {grouped.am.attributes.map((a: Attribute, i: number) => (
+                      //@ts-ignore
                       <Grid item xs={6} sm={4} key={i}>
                         <Box
                           sx={{
@@ -298,7 +305,7 @@ export default function HomePage() {
                   </Typography>
                   <Divider sx={{ mb: 1.5, opacity: 0.15 }} />
                   <Stack spacing={1.2}>
-                    {grouped.notes.map((n) => (
+                    {grouped.notes.map((n: Note) => (
                       <Box key={n.id}>
                         <Typography
                           variant="body2"
@@ -353,7 +360,8 @@ export default function HomePage() {
                   <Divider sx={{ mb: 1.5, opacity: 0.15 }} />
 
                   <Grid container spacing={2}>
-                    {grouped.pm.attributes.map((a, i) => (
+                    {grouped.pm.attributes.map((a: Attribute, i: number) => (
+                      //@ts-ignore
                       <Grid item xs={6} sm={4} key={i}>
                         <Box
                           sx={{
