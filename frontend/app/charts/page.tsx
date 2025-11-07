@@ -1,6 +1,6 @@
 "use client";
 
-import { Line, Bar, Scatter } from "react-chartjs-2";
+import { Line, Bar, Scatter, Chart } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -142,7 +142,7 @@ export default function ChartsPage() {
   };
 
   // =====================================================
-  // 🏋️ Training Load
+  // 🏋️ Training Load (mixed chart)
   // =====================================================
   const workoutConfig = {
     labels: workouts.map((w) => dateLabel(w.date)),
@@ -368,7 +368,9 @@ export default function ChartsPage() {
       <Fade in={!fading}>
         <Paper sx={{ p: 4, mb: 6, background: "#181818", borderRadius: 4 }}>
           <Typography variant="h6" gutterBottom>Training Load</Typography>
-          <Box sx={chartBoxStyle}><Bar data={workoutConfig} options={baseChartOptions} /></Box>
+          <Box sx={chartBoxStyle}>
+            <Chart type="bar" data={workoutConfig} options={baseChartOptions} />
+          </Box>
           <Divider sx={{ my: 3, opacity: 0.1 }} />
           <Stack direction="row" flexWrap="wrap" spacing={1}>
             {data.workouts.insights.map((i: string, idx: number) => (
