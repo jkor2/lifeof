@@ -1,6 +1,6 @@
 "use client";
 
-import { Line, Bar, Chart } from "react-chartjs-2";
+import { Line, Bar, Scatter, Chart } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -28,7 +28,6 @@ import {
 } from "@mui/material";
 import { useEffect, useState, useMemo } from "react";
 import dayjs from "dayjs";
-import type { ChartData, ChartOptions } from "chart.js";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend);
 
@@ -93,17 +92,17 @@ export default function ChartsPage() {
     minRotation: 0,
   };
   const gridSettings = { color: "rgba(255,255,255,0.05)" };
-  const baseChartOptions: ChartOptions = {
+  const baseChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: { labels: { color: "#ccc" } },
-      tooltip: { mode: "index", intersect: false },
+      tooltip: { mode: "index" as const, intersect: false },
     },
     scales: {
       x: { ticks: tickSettings, grid: gridSettings },
       y: { ticks: { color: "#aaa" }, grid: gridSettings },
-      y1: { position: "right", ticks: { color: "#aaa" }, grid: { drawOnChartArea: false } },
+      y1: { position: "right" as const, ticks: { color: "#aaa" }, grid: { drawOnChartArea: false } },
     },
   };
   const chartBoxStyle = { height: 380, width: "100%", pb: isMobile ? 1 : 0 };
@@ -111,7 +110,7 @@ export default function ChartsPage() {
   // =====================================================
   // 🩺 Recovery
   // =====================================================
-  const recoveryConfig: ChartData<"line"> = {
+  const recoveryConfig = {
     labels: recovery.map((r) => dateLabel(r.date)),
     datasets: [
       {
@@ -145,11 +144,11 @@ export default function ChartsPage() {
   // =====================================================
   // 🏋️ Training Load (mixed chart)
   // =====================================================
-  const workoutConfig: ChartData<"bar"> = {
+  const workoutConfig = {
     labels: workouts.map((w) => dateLabel(w.date)),
     datasets: [
       {
-        type: "line",
+        type: "line" as const,
         label: "Strain",
         data: workouts.map((w) => w.strain),
         borderColor: "#FF4081",
@@ -158,7 +157,7 @@ export default function ChartsPage() {
         yAxisID: "y",
       },
       {
-        type: "bar",
+        type: "bar" as const,
         label: "Distance (m)",
         data: workouts.map((w) => w.distance),
         backgroundColor: "#00C6FF",
@@ -171,7 +170,7 @@ export default function ChartsPage() {
   // =====================================================
   // 🕒 Sleep Duration (single axis)
   // =====================================================
-  const sleepDurationConfig: ChartData<"line"> = {
+  const sleepDurationConfig = {
     labels: sleep.map((s) => dateLabel(s.date)),
     datasets: [
       {
@@ -186,10 +185,10 @@ export default function ChartsPage() {
     ],
   };
 
-  const sleepDurationOptions: ChartOptions = {
+  const sleepDurationOptions = {
     ...baseChartOptions,
     scales: {
-      x: baseChartOptions.scales!.x!,
+      x: baseChartOptions.scales.x,
       y: {
         ticks: { color: "#aaa" },
         grid: gridSettings,
@@ -204,7 +203,7 @@ export default function ChartsPage() {
   // =====================================================
   // 🧠 Sleep Composition
   // =====================================================
-  const sleepCompositionConfig: ChartData<"bar"> = {
+  const sleepCompositionConfig = {
     labels: sleep.map((s) => dateLabel(s.date)),
     datasets: [
       {
@@ -228,7 +227,7 @@ export default function ChartsPage() {
     ],
   };
 
-  const sleepCompositionOptions: ChartOptions = {
+  const sleepCompositionOptions = {
     ...baseChartOptions,
     scales: {
       x: { stacked: true, ticks: tickSettings, grid: gridSettings },
@@ -237,7 +236,7 @@ export default function ChartsPage() {
   };
 
   // =====================================================
-  // 💚 HRV vs Recovery + Line of Best Fit
+  // 💚 HRV vs Recovery + Line of Best Fit (TS fixed)
   // =====================================================
   const scatterData = recovery
     .filter((r) => r.hrv && r.recovery_score)
@@ -250,10 +249,10 @@ export default function ChartsPage() {
   let trendlinePoints: { x: number; y: number }[] = [];
   if (scatterData.length > 1) {
     const n = scatterData.length;
-    const sumX = scatterData.reduce((a, p) => a + p.x, 0);
-    const sumY = scatterData.reduce((a, p) => a + p.y, 0);
-    const sumXY = scatterData.reduce((a, p) => a + p.x * p.y, 0);
-    const sumX2 = scatterData.reduce((a, p) => a + p.x * p.x, 0);
+    const sumX = scatterData.reduce((acc, p) => acc + p.x, 0);
+    const sumY = scatterData.reduce((acc, p) => acc + p.y, 0);
+    const sumXY = scatterData.reduce((acc, p) => acc + p.x * p.y, 0);
+    const sumX2 = scatterData.reduce((acc, p) => acc + p.x * p.x, 0);
 
     const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
     const intercept = (sumY - slope * sumX) / n;
@@ -267,11 +266,13 @@ export default function ChartsPage() {
     ];
   }
 
-  const scatterConfig: ChartData<"scatter"> = {
+  const scatterConfig = {
     datasets: [
       {
+        type: "scatter" as const,
         label: "HRV vs Recovery Score",
         data: scatterData,
+        parsing: false,
         backgroundColor: scatterData.map((d) => d.backgroundColor),
         borderColor: "rgba(255,255,255,0.15)",
         pointRadius: 6,
@@ -280,7 +281,7 @@ export default function ChartsPage() {
       ...(trendlinePoints.length
         ? [
             {
-              type: "line",
+              type: "line" as const,
               label: "Line of Best Fit",
               data: trendlinePoints,
               borderColor: "#00C6FF",
@@ -293,9 +294,9 @@ export default function ChartsPage() {
           ]
         : []),
     ],
-  };
+  } as import("chart.js").ChartData<"scatter", { x: number; y: number }[], unknown> as any;
 
-  const scatterOptions: ChartOptions = {
+  const scatterOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { labels: { color: "#ccc" } } },
@@ -336,6 +337,7 @@ export default function ChartsPage() {
 
   return (
     <Container maxWidth="xl" sx={{ py: 6 }}>
+      {/* Header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={4}>
         <Typography variant="h4" sx={{ fontWeight: 700 }}>
           WHOOP Analytics
@@ -406,7 +408,7 @@ export default function ChartsPage() {
         <Paper sx={{ p: 4, mb: 10, background: "#181818", borderRadius: 4 }}>
           <Typography variant="h6" gutterBottom>HRV vs Recovery Score</Typography>
           <Box sx={{ height: 420, width: "100%" }}>
-            <Chart type="scatter" data={scatterConfig} options={scatterOptions} />
+            <Scatter data={scatterConfig} options={scatterOptions} />
           </Box>
         </Paper>
       </Fade>
