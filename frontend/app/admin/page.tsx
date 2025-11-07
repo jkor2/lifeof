@@ -20,13 +20,13 @@ import {
   DialogActions,
   Card,
   CardContent,
+  Fab,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import PublicIcon from "@mui/icons-material/Public";
 import LockIcon from "@mui/icons-material/Lock";
 import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
-import SettingsIcon from "@mui/icons-material/Settings";
 import DeleteIcon from "@mui/icons-material/Delete";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
@@ -42,13 +42,11 @@ type Entry = {
   notes?: { content: string; created_at: string }[];
 };
 
-// ✅ Grouped entries type
 interface EntryGroup {
   date: string;
   entries: Entry[];
 }
 
-// 🔹 WHOOP types
 type WhoopStatus = { connected: boolean; message: string };
 type WhoopData = {
   recovery?: { records?: any[] };
@@ -64,7 +62,6 @@ export default function AdminDashboard() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // 🔹 WHOOP state
   const [whoopStatus, setWhoopStatus] = useState<WhoopStatus | null>(null);
   const [whoopData, setWhoopData] = useState<WhoopData | null>(null);
   const [whoopLoading, setWhoopLoading] = useState(true);
@@ -74,17 +71,16 @@ export default function AdminDashboard() {
   const router = useRouter();
 
   // =====================================================
-  // 🧠 Load all entries
+  // 🧠 Load entries
   // =====================================================
   const fetchEntries = async () => {
     try {
       const res = await fetch(`${api}/entries/`);
       const data: Entry[] = await res.json();
-
       if (!Array.isArray(data)) throw new Error("Invalid response");
 
       const grouped: Record<string, Entry[]> = {};
-      data.forEach((entry: Entry) => {
+      data.forEach((entry) => {
         const dateKey = entry.date;
         if (!grouped[dateKey]) grouped[dateKey] = [];
         grouped[dateKey].push(entry);
@@ -99,7 +95,6 @@ export default function AdminDashboard() {
           ),
         }));
 
-      // ✅ Type-safe assignment
       setEntries(sortedGroups);
     } catch (e) {
       console.error(e);
@@ -116,9 +111,7 @@ export default function AdminDashboard() {
       const res = await fetch(`${api}/whoop/status`);
       const data = await res.json();
       setWhoopStatus(data);
-      if (data.connected) {
-        await fetchWhoopData();
-      }
+      if (data.connected) await fetchWhoopData();
     } catch (err) {
       console.error(err);
     } finally {
@@ -208,7 +201,27 @@ export default function AdminDashboard() {
   // 🧱 Render
   // =====================================================
   return (
-    <Container maxWidth="md" sx={{ py: isMobile ? 3 : 6 }}>
+    <Container maxWidth="md" sx={{ py: isMobile ? 3 : 6, position: "relative" }}>
+      {/* ➕ Floating New Entry Button */}
+      <Tooltip title="Add New Entry">
+        <Fab
+          color="primary"
+          aria-label="add"
+          onClick={() => router.push("/admin/new-entry")}
+          sx={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            background: "linear-gradient(135deg, #00C6FF 0%, #0072FF 100%)",
+            color: "white",
+            "&:hover": { background: "linear-gradient(135deg, #0099FF 0%, #0066FF 100%)" },
+            zIndex: 2000,
+          }}
+        >
+          <AddIcon />
+        </Fab>
+      </Tooltip>
+
       {/* WHOOP Card */}
       <Card
         sx={{
@@ -298,7 +311,7 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* Entries */}
+      {/* Entries List */}
       <Paper
         sx={{
           p: isMobile ? 2 : 3,

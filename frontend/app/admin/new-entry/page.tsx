@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import {
   Container,
   TextField,
@@ -24,6 +24,9 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AddIcon from "@mui/icons-material/Add";
 import { useRouter, useSearchParams } from "next/navigation";
 
+// =====================================================
+// Types
+// =====================================================
 type Attribute = {
   name: string;
   value: string;
@@ -48,7 +51,27 @@ type AttributeDef = {
   day_period?: "am" | "pm";
 };
 
-export default function NewEntryPage() {
+// =====================================================
+// Main Page Wrapper — Suspense Boundary
+// =====================================================
+export default function NewEntryPageWrapper() {
+  return (
+    <Suspense
+      fallback={
+        <Container maxWidth="sm" sx={{ py: 6, textAlign: "center" }}>
+          <CircularProgress />
+        </Container>
+      }
+    >
+      <NewEntryPage />
+    </Suspense>
+  );
+}
+
+// =====================================================
+// Inner Page Component (uses useSearchParams safely)
+// =====================================================
+function NewEntryPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const api = process.env.NEXT_PUBLIC_API_URL;
@@ -116,7 +139,7 @@ export default function NewEntryPage() {
         setVisibility(data.visibility);
         setAttributes(data.attributes || []);
         setNotes(data.notes || []);
-        setEntryId(data.id); // ✅ set local entryId
+        setEntryId(data.id);
       } catch (err) {
         console.error("Error loading entry:", err);
       }
@@ -166,7 +189,7 @@ export default function NewEntryPage() {
   };
 
   // =====================================================
-  // 💾 Save / Update Entry (✅ includes day_period)
+  // 💾 Save / Update Entry
   // =====================================================
   const handleSubmit = async () => {
     if (!date) {
@@ -189,7 +212,6 @@ export default function NewEntryPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Error saving entry");
 
-      // ✅ Store the ID returned from backend
       setEntryId(data.id);
       localStorage.setItem("currentEntryId", data.id);
 
@@ -202,7 +224,7 @@ export default function NewEntryPage() {
   };
 
   // =====================================================
-  // 🗒️ Add a Note (✅ now uses entryId fallback)
+  // 🗒️ Add Note
   // =====================================================
   const handleAddNote = async () => {
     const activeId = entryId || localStorage.getItem("currentEntryId");
@@ -370,7 +392,7 @@ export default function NewEntryPage() {
             </Stack>
           )}
 
-          {/* Notes */}
+          {/* Notes Section */}
           <Divider sx={{ my: 2, opacity: 0.2 }} />
           <Typography variant="h6">Notes</Typography>
 
