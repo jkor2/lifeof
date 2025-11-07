@@ -1,15 +1,38 @@
-import ssl
-from sqlalchemy import create_engine, MetaData
-from core.config import DATABASE_URL
+# core/database.py
+import os
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import MetaData
 
-# Create SSL context for Supabase
-ssl_context = ssl.create_default_context()
+# Get env var
+raw_url = os.getenv("CONNECTION_STRING")
+if not raw_url:
+    raise RuntimeError("Missing CONNECTION_STRING environment variable")
 
-# Create synchronous SQLAlchemy engine (simpler and fully supported by Supabase)
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"sslmode": "require"}
+# Ensure async driver
+if raw_url.startswith("postgresql://"):
+    raw_url = raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+# ❗️Do NOT add sslmode=require manually — Supabase pooler handles SSL internally
+# Adding it causes the asyncpg TypeError you’re seeing
+
+# Create engine (no connect_args)
+engine = create_async_engine(
+    raw_url,
+    echo=False,
+    pool_pre_ping=True,
+    future=True,
 )
 
-# Metadata for model creation
-metadata = MetaData()
+async_session = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+metadata = MetaData(schema=os.getenv("SCHEMA", "public"))
+
+
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(metadata.create_all)

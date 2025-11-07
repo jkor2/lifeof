@@ -1,14 +1,30 @@
+# main.py
 from fastapi import FastAPI
-from routers import entries
-from core.database import engine, metadata
+from fastapi.middleware.cors import CORSMiddleware
+from core.database import init_db  # ✅ use the async helper instead
+from routers import entries, attribute_definitions
 
 app = FastAPI(title="LifeOf API")
 
-# Create tables if not already present
-metadata.create_all(engine)
+# ✅ CORS for local + Vercel frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "https://*.vercel.app"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
+# ✅ Register routers
 app.include_router(entries.router)
+app.include_router(attribute_definitions.router)
+
+@app.on_event("startup")
+async def on_startup():
+    # Initialize database metadata if needed
+    await init_db()
+    print("✅ Database initialized")
 
 @app.get("/")
-def root():
-    return {"message": "✅ Connected to Supabase database successfully"}
+async def root():
+    return {"message": "✅ LifeOf API ready"}

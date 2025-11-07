@@ -2,6 +2,7 @@ fastapi
 uvicorn
 sqlalchemy
 databases
-asyncpg
 python-dotenv
 psycopg2-binary
+SQLAlchemy>=2.0
+asyncpg>=0.29
