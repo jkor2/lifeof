@@ -42,6 +42,12 @@ type Entry = {
   notes?: { content: string; created_at: string }[];
 };
 
+// ✅ Grouped entries type
+interface EntryGroup {
+  date: string;
+  entries: Entry[];
+}
+
 // 🔹 WHOOP types
 type WhoopStatus = { connected: boolean; message: string };
 type WhoopData = {
@@ -52,7 +58,7 @@ type WhoopData = {
 export default function AdminDashboard() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const [entries, setEntries] = useState<EntryGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -73,17 +79,18 @@ export default function AdminDashboard() {
   const fetchEntries = async () => {
     try {
       const res = await fetch(`${api}/entries/`);
-      const data = await res.json();
+      const data: Entry[] = await res.json();
+
       if (!Array.isArray(data)) throw new Error("Invalid response");
 
       const grouped: Record<string, Entry[]> = {};
-      for (const entry of data) {
+      data.forEach((entry: Entry) => {
         const dateKey = entry.date;
         if (!grouped[dateKey]) grouped[dateKey] = [];
         grouped[dateKey].push(entry);
-      }
+      });
 
-      const sortedGroups = Object.entries(grouped)
+      const sortedGroups: EntryGroup[] = Object.entries(grouped)
         .sort(([a], [b]) => (a < b ? 1 : -1))
         .map(([date, entries]) => ({
           date,
@@ -92,7 +99,8 @@ export default function AdminDashboard() {
           ),
         }));
 
-      setEntries(sortedGroups as any);
+      // ✅ Type-safe assignment
+      setEntries(sortedGroups);
     } catch (e) {
       console.error(e);
     } finally {
@@ -236,25 +244,20 @@ export default function AdminDashboard() {
                   <Box>
                     <HealthAndSafetyIcon sx={{ color: "#00C6FF" }} />
                     <Typography variant="body2">
-                      Recovery:{" "}
-                      {whoopData.recovery.records[0].score.recovery_score}%
+                      Recovery: {whoopData.recovery.records[0].score.recovery_score}%
                     </Typography>
                   </Box>
                   <Box>
                     <FavoriteIcon sx={{ color: "#FF4081" }} />
                     <Typography variant="body2">
                       HRV:{" "}
-                      {whoopData.recovery.records[0].score.hrv_rmssd_milli.toFixed(
-                        1
-                      )}{" "}
-                      ms
+                      {whoopData.recovery.records[0].score.hrv_rmssd_milli.toFixed(1)} ms
                     </Typography>
                   </Box>
                   <Box>
                     <FitnessCenterIcon sx={{ color: "#FFD54F" }} />
                     <Typography variant="body2">
-                      RHR:{" "}
-                      {whoopData.recovery.records[0].score.resting_heart_rate} bpm
+                      RHR: {whoopData.recovery.records[0].score.resting_heart_rate} bpm
                     </Typography>
                   </Box>
                 </Stack>
@@ -295,42 +298,6 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* Header */}
-      <Stack
-        direction={isMobile ? "column" : "row"}
-        justifyContent="space-between"
-        alignItems={isMobile ? "stretch" : "center"}
-        spacing={isMobile ? 2 : 0}
-        mb={4}
-      >
-        <Typography variant={isMobile ? "h5" : "h4"}>
-          Admin Dashboard
-        </Typography>
-
-        <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            startIcon={<SettingsIcon />}
-            onClick={() => router.push("/admin/manage-attributes")}
-            sx={{
-              borderColor: "rgba(255,255,255,0.15)",
-              color: "white",
-              "&:hover": { borderColor: "white", background: "#222" },
-            }}
-          >
-            Manage Attributes
-          </Button>
-
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => router.push("/admin/new-entry")}
-          >
-            New Entry
-          </Button>
-        </Stack>
-      </Stack>
-
       {/* Entries */}
       <Paper
         sx={{
@@ -353,11 +320,7 @@ export default function AdminDashboard() {
             <Box key={date} sx={{ mb: 4 }}>
               <Typography
                 variant="h6"
-                sx={{
-                  mb: 2,
-                  fontWeight: "bold",
-                  color: "#00C6FF",
-                }}
+                sx={{ mb: 2, fontWeight: "bold", color: "#00C6FF" }}
               >
                 {new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
                   year: "numeric",
