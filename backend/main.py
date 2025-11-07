@@ -9,7 +9,10 @@ app = FastAPI(title="LifeOf API")
 # ✅ CORS for local + Vercel frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://*.vercel.app"],
+    allow_origins=["http://localhost:3000", 
+                           "https://lifeof-prtf.vercel.app",  # ✅ your production frontend
+
+                   ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
