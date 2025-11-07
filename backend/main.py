@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.database import init_db  # ✅ use the async helper instead
-from routers import entries, attribute_definitions
+from routers import entries, attribute_definitions, whoop
 
 app = FastAPI(title="LifeOf API")
 
@@ -18,6 +18,7 @@ app.add_middleware(
 # ✅ Register routers
 app.include_router(entries.router)
 app.include_router(attribute_definitions.router)
+app.include_router(whoop.router)
 
 @app.on_event("startup")
 async def on_startup():

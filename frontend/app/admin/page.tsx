@@ -18,6 +18,8 @@ import {
   Dialog,
   DialogTitle,
   DialogActions,
+  Card,
+  CardContent,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import PublicIcon from "@mui/icons-material/Public";
@@ -26,6 +28,9 @@ import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import SettingsIcon from "@mui/icons-material/Settings";
 import DeleteIcon from "@mui/icons-material/Delete";
+import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
+import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
+import FavoriteIcon from "@mui/icons-material/Favorite";
 import { useRouter } from "next/navigation";
 
 type Entry = {
@@ -37,6 +42,13 @@ type Entry = {
   notes?: { content: string; created_at: string }[];
 };
 
+// 🔹 WHOOP types
+type WhoopStatus = { connected: boolean; message: string };
+type WhoopData = {
+  recovery?: { records?: any[] };
+  profile?: any;
+};
+
 export default function AdminDashboard() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -45,6 +57,13 @@ export default function AdminDashboard() {
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // 🔹 WHOOP state
+  const [whoopStatus, setWhoopStatus] = useState<WhoopStatus | null>(null);
+  const [whoopData, setWhoopData] = useState<WhoopData | null>(null);
+  const [whoopLoading, setWhoopLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+
   const api = process.env.NEXT_PUBLIC_API_URL;
   const router = useRouter();
 
@@ -57,15 +76,13 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Invalid response");
 
-      // ✅ Use raw UTC date (don’t shift timezone) — ensures accurate local day
       const grouped: Record<string, Entry[]> = {};
       for (const entry of data) {
-        const dateKey = entry.date; // Already in YYYY-MM-DD format from backend
+        const dateKey = entry.date;
         if (!grouped[dateKey]) grouped[dateKey] = [];
         grouped[dateKey].push(entry);
       }
 
-      // ✅ Sort dates descending (newest → oldest)
       const sortedGroups = Object.entries(grouped)
         .sort(([a], [b]) => (a < b ? 1 : -1))
         .map(([date, entries]) => ({
@@ -83,8 +100,61 @@ export default function AdminDashboard() {
     }
   };
 
+  // =====================================================
+  // 🩺 WHOOP Integration
+  // =====================================================
+  const fetchWhoopStatus = async () => {
+    try {
+      const res = await fetch(`${api}/whoop/status`);
+      const data = await res.json();
+      setWhoopStatus(data);
+      if (data.connected) {
+        await fetchWhoopData();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setWhoopLoading(false);
+    }
+  };
+
+  const fetchWhoopData = async () => {
+    try {
+      const res = await fetch(`${api}/whoop/data`);
+      const data = await res.json();
+      setWhoopData(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const connectWhoop = async () => {
+    const res = await fetch(`${api}/whoop/auth`);
+    const data = await res.json();
+    if (data.auth_url) window.location.href = data.auth_url;
+  };
+
+  const syncWhoopData = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch(`${api}/whoop/sync/latest`, { method: "POST" });
+      const data = await res.json();
+      alert(data.message || "WHOOP data synced successfully!");
+      await fetchWhoopData();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to sync WHOOP data.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // =====================================================
+  // Lifecycle
+  // =====================================================
   useEffect(() => {
     fetchEntries();
+    fetchWhoopStatus();
   }, []);
 
   // =====================================================
@@ -114,9 +184,7 @@ export default function AdminDashboard() {
     if (!deleteId) return;
     setDeleting(true);
     try {
-      const res = await fetch(`${api}/entries/${deleteId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`${api}/entries/${deleteId}`, { method: "DELETE" });
       if (res.ok) {
         setDeleteId(null);
         fetchEntries();
@@ -133,7 +201,101 @@ export default function AdminDashboard() {
   // =====================================================
   return (
     <Container maxWidth="md" sx={{ py: isMobile ? 3 : 6 }}>
-      {/* ✅ Header */}
+      {/* WHOOP Card */}
+      <Card
+        sx={{
+          mb: 4,
+          background: "#181818",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 3,
+        }}
+      >
+        <CardContent sx={{ textAlign: "center" }}>
+          <Typography variant="h6" gutterBottom>
+            WHOOP Integration
+          </Typography>
+
+          {whoopLoading ? (
+            <CircularProgress size={20} />
+          ) : whoopStatus?.connected ? (
+            <>
+              <Typography
+                variant="body2"
+                sx={{ color: "#4caf50", mb: 2, fontWeight: 500 }}
+              >
+                Connected ✅
+              </Typography>
+
+              {whoopData?.recovery?.records?.[0]?.score ? (
+                <Stack
+                  direction="row"
+                  justifyContent="center"
+                  spacing={4}
+                  sx={{ mb: 2 }}
+                >
+                  <Box>
+                    <HealthAndSafetyIcon sx={{ color: "#00C6FF" }} />
+                    <Typography variant="body2">
+                      Recovery:{" "}
+                      {whoopData.recovery.records[0].score.recovery_score}%
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <FavoriteIcon sx={{ color: "#FF4081" }} />
+                    <Typography variant="body2">
+                      HRV:{" "}
+                      {whoopData.recovery.records[0].score.hrv_rmssd_milli.toFixed(
+                        1
+                      )}{" "}
+                      ms
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <FitnessCenterIcon sx={{ color: "#FFD54F" }} />
+                    <Typography variant="body2">
+                      RHR:{" "}
+                      {whoopData.recovery.records[0].score.resting_heart_rate} bpm
+                    </Typography>
+                  </Box>
+                </Stack>
+              ) : (
+                <Typography color="text.secondary" variant="body2" mb={2}>
+                  Data synced successfully — no recent metrics yet.
+                </Typography>
+              )}
+
+              <Button
+                variant="contained"
+                color="secondary"
+                onClick={syncWhoopData}
+                disabled={syncing}
+                sx={{ textTransform: "none" }}
+              >
+                {syncing ? "Syncing..." : "Sync WHOOP Data"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Typography
+                variant="body2"
+                sx={{ color: "#f44336", mb: 2, fontWeight: 500 }}
+              >
+                Not Connected ❌
+              </Typography>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={connectWhoop}
+                sx={{ textTransform: "none" }}
+              >
+                Connect WHOOP
+              </Button>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Header */}
       <Stack
         direction={isMobile ? "column" : "row"}
         justifyContent="space-between"
@@ -169,7 +331,7 @@ export default function AdminDashboard() {
         </Stack>
       </Stack>
 
-      {/* ✅ Entries Section */}
+      {/* Entries */}
       <Paper
         sx={{
           p: isMobile ? 2 : 3,
@@ -189,7 +351,6 @@ export default function AdminDashboard() {
         ) : (
           entries.map(({ date, entries: dayEntries }) => (
             <Box key={date} sx={{ mb: 4 }}>
-              {/* ✅ Date header — shows exact date with no offset */}
               <Typography
                 variant="h6"
                 sx={{
@@ -242,7 +403,6 @@ export default function AdminDashboard() {
                       </Box>
 
                       <Stack direction="row" spacing={1} alignItems="center">
-                        {/* Visibility Toggle */}
                         <Tooltip title="Toggle visibility">
                           <span>
                             <Chip
@@ -288,7 +448,6 @@ export default function AdminDashboard() {
                           </span>
                         </Tooltip>
 
-                        {/* Edit */}
                         <Tooltip title="Edit Entry">
                           <IconButton
                             color="primary"
@@ -300,7 +459,6 @@ export default function AdminDashboard() {
                           </IconButton>
                         </Tooltip>
 
-                        {/* Delete */}
                         <Tooltip title="Delete Entry">
                           <IconButton
                             color="error"
@@ -310,7 +468,6 @@ export default function AdminDashboard() {
                           </IconButton>
                         </Tooltip>
 
-                        {/* Public Link */}
                         {entry.visibility === "public" && (
                           <Tooltip title="View Public Page">
                             <IconButton color="secondary">
@@ -348,7 +505,7 @@ export default function AdminDashboard() {
         )}
       </Paper>
 
-      {/* 🗑️ Delete Confirmation Dialog */}
+      {/* 🗑️ Delete Confirmation */}
       <Dialog open={!!deleteId} onClose={() => setDeleteId(null)}>
         <DialogTitle sx={{ color: "white", background: "#181818" }}>
           Are you sure you want to delete this entry?
