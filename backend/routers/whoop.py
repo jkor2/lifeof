@@ -5,8 +5,10 @@ import secrets
 import requests
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from supabase import create_client
+from core.convert import to_est_datetime, extract_est_date  # ✅ shared EST helpers
 
 # =====================================================
 # 🌍 Load environment variables
@@ -105,34 +107,37 @@ def get_auth_url():
 
 
 # =====================================================
-# 🔑 Step 2: Callback (exchange code for tokens)
+# 🔑 Step 2: Callback (exchange code for tokens + redirect)
 # =====================================================
 @router.get("/auth/whoop/callback")
 def whoop_callback(code: str = None, state: str = None):
+    """
+    Handles WHOOP OAuth callback:
+    - Exchanges the authorization code for access + refresh tokens
+    - Saves tokens securely
+    - Redirects user to frontend dashboard (/admin) after success
+    """
     if not code:
-        raise HTTPException(400, "Missing authorization code")
+        raise HTTPException(status_code=400, detail="Missing authorization code")
 
     data = {
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": WHOOP_REDIRECT_URI,
+        "redirect_uri": WHOOP_REDIRECT_URI,   # must match WHOOP Developer settings
         "client_id": WHOOP_CLIENT_ID,
         "client_secret": WHOOP_CLIENT_SECRET,
     }
 
     res = requests.post(WHOOP_TOKEN_URL, data=data)
     if res.status_code != 200:
-        raise HTTPException(res.status_code, res.text)
+        raise HTTPException(status_code=res.status_code, detail=res.text)
 
     tokens = res.json()
     save_tokens(tokens)
 
-    has_refresh = "refresh_token" in tokens
-    return {
-        "message": "✅ WHOOP connected successfully!",
-        "has_refresh_token": has_refresh,
-        "tokens": tokens if not has_refresh else "Stored securely ✅"
-    }
+    # ✅ Redirect user to frontend admin page with a success indicator
+    frontend_redirect = "https://lifeof-prtf.vercel.app/admin?connected=whoop"
+    return RedirectResponse(url=frontend_redirect)
 
 
 # =====================================================
@@ -245,46 +250,36 @@ def get_full_whoop_history():
 
 
 # =====================================================
-# 🔄 Step 6: Daily Sync (fetch latest WHOOP data + insert)
+# ⚙️ Helpers
 # =====================================================
-def extract_date(ts):
-    """Convert timestamp to YYYY-MM-DD."""
-    if not ts:
-        return None
-    try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00")).date().isoformat()
-    except Exception:
-        return None
+def to_hours(ms):
+    return round((ms or 0) / 1000 / 60 / 60, 2)
 
 
-@router.get("/sync/latest")
-@router.post("/sync/latest")
+# =====================================================
+# 🟩 WHOOP: Sync Latest (multi-workout support)
+# =====================================================
+@router.get("/latest")
+@router.post("/latest")
 def sync_latest_whoop_data():
     """
-    Fetches the *most recent* WHOOP recovery, sleep, and workout data (limit=1 each)
-    and inserts them into Supabase tables (skips duplicate recovery).
+    Fetches the most recent WHOOP recovery, sleep, and up to 5 workout records.
+    Converts UTC timestamps → EST and stores record_date as YYYY-MM-DD.
+    Skips insert if record already exists in Supabase.
     """
-    tokens = ensure_valid_token()
-    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+    try:
+        tokens = ensure_valid_token()
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token error: {e}")
 
     endpoints = {
         "recovery": f"{WHOOP_API_BASE}/recovery?limit=1",
         "sleep": f"{WHOOP_API_BASE}/activity/sleep?limit=1",
-        "workouts": f"{WHOOP_API_BASE}/activity/workout?limit=1",
+        "workouts": f"{WHOOP_API_BASE}/activity/workout?limit=5",  # ✅ Fetch more than one workout
     }
 
     results = {}
-
-    def extract_date(ts):
-        if not ts:
-            return None
-        try:
-            return datetime.fromisoformat(ts.replace("Z", "+00:00")).date().isoformat()
-        except Exception:
-            return None
-
-    def to_hours(ms):
-        return round((ms or 0) / 1000 / 60 / 60, 2)
 
     for key, url in endpoints.items():
         r = requests.get(url, headers=headers)
@@ -292,21 +287,19 @@ def sync_latest_whoop_data():
             results[key] = {"error": r.text}
             continue
 
-        data = r.json().get("records", [])
-        if not data:
+        records = r.json().get("records", [])
+        if not records:
             results[key] = {"message": "No new records"}
             continue
 
-        record = data[0]
-
         # =====================================================
-        # 🟩 Recovery
+        # 🟢 Recovery (1 record max)
         # =====================================================
         if key == "recovery":
+            record = records[0]
             score = record.get("score") or {}
-            record_date = extract_date(record.get("created_at"))
+            record_date = extract_est_date(record.get("created_at"))
 
-            # Skip if duplicate
             existing = (
                 SUPABASE.table("whoop_recovery")
                 .select("record_date")
@@ -318,6 +311,7 @@ def sync_latest_whoop_data():
                 continue
 
             insert = {
+                "sleep_id": str(record.get("sleep_id")),
                 "cycle_id": str(record.get("cycle_id")),
                 "recovery_score": str(score.get("recovery_score")),
                 "resting_heart_rate": str(score.get("resting_heart_rate")),
@@ -326,25 +320,34 @@ def sync_latest_whoop_data():
                 "skin_temp_celsius": str(score.get("skin_temp_celsius")),
                 "record_date": record_date,
             }
+
             SUPABASE.table("whoop_recovery").insert(insert).execute()
-            results[key] = {"message": "✅ Inserted latest recovery"}
+            results[key] = {"message": f"✅ Inserted recovery for {record_date}"}
 
         # =====================================================
-        # 😴 Sleep
+        # 😴 Sleep (1 record max)
         # =====================================================
         elif key == "sleep":
+            record = records[0]
             score = record.get("score") or {}
             stage = score.get("stage_summary") or {}
-            needed = score.get("sleep_needed") or {}
+            record_date = extract_est_date(record.get("end"))
+
+            existing = (
+                SUPABASE.table("whoop_sleep")
+                .select("record_date")
+                .eq("record_date", record_date)
+                .execute()
+            )
+            if existing.data:
+                results[key] = {"message": f"⚠️ Sleep for {record_date} already exists — skipped"}
+                continue
 
             insert = {
                 "id": str(record.get("id")),
                 "cycle_id": str(record.get("cycle_id")),
-                "start": str(record.get("start")),
-                "end": str(record.get("end")),
-                "timezone_offset": str(record.get("timezone_offset")),
-                "nap": str(record.get("nap", False)),
-                "score_state": str(record.get("score_state")),
+                "start": to_est_datetime(record.get("start")).isoformat() if record.get("start") else None,
+                "end": to_est_datetime(record.get("end")).isoformat() if record.get("end") else None,
                 "sleep_performance_percentage": str(score.get("sleep_performance_percentage")),
                 "sleep_efficiency_percentage": str(score.get("sleep_efficiency_percentage")),
                 "sleep_consistency_percentage": str(score.get("sleep_consistency_percentage")),
@@ -356,36 +359,55 @@ def sync_latest_whoop_data():
                 "total_awake_hours": str(to_hours(stage.get("total_awake_time_milli"))),
                 "disturbance_count": str(stage.get("disturbance_count")),
                 "sleep_cycle_count": str(stage.get("sleep_cycle_count")),
-                "baseline_need_hours": str(to_hours(needed.get("baseline_milli"))),
-                "need_from_sleep_debt_hours": str(to_hours(needed.get("need_from_sleep_debt_milli"))),
-                "need_from_strain_hours": str(to_hours(needed.get("need_from_recent_strain_milli"))),
-                "record_date": extract_date(record.get("end")),
+                "record_date": record_date,
             }
 
             SUPABASE.table("whoop_sleep").upsert(insert).execute()
-            results[key] = {"message": "✅ Inserted latest sleep"}
+            results[key] = {"message": f"✅ Inserted sleep for {record_date}"}
 
         # =====================================================
-        # 🏋️ Workouts
+        # 🏋️ Workouts (handle multiple)
         # =====================================================
         elif key == "workouts":
-            score = record.get("score") or {}
-            insert = {
-                "id": str(record.get("id")),
-                "sport_name": str(record.get("sport_name")),
-                "strain": str(score.get("strain")),
-                "average_heart_rate": str(score.get("average_heart_rate")),
-                "max_heart_rate": str(score.get("max_heart_rate")),
-                "kilojoule": str(score.get("kilojoule")),
-                "distance_meter": str(score.get("distance_meter")),
-                "altitude_gain_meter": str(score.get("altitude_gain_meter")),
-                "record_date": extract_date(record.get("end")),
+            inserted_count = 0
+            skipped_count = 0
+            for record in records:
+                score = record.get("score") or {}
+                record_id = str(record.get("id"))
+                record_date = extract_est_date(record.get("end"))
+
+                # Skip if workout already exists by ID (safer than date-only)
+                existing = (
+                    SUPABASE.table("whoop_workouts")
+                    .select("id")
+                    .eq("id", record_id)
+                    .execute()
+                )
+                if existing.data:
+                    skipped_count += 1
+                    continue
+
+                insert = {
+                    "id": record_id,
+                    "sport_name": str(record.get("sport_name")),
+                    "strain": str(score.get("strain")),
+                    "average_heart_rate": str(score.get("average_heart_rate")),
+                    "max_heart_rate": str(score.get("max_heart_rate")),
+                    "kilojoule": str(score.get("kilojoule")),
+                    "distance_meter": str(score.get("distance_meter")),
+                    "altitude_gain_meter": str(score.get("altitude_gain_meter")),
+                    "record_date": record_date,
+                }
+
+                SUPABASE.table("whoop_workouts").insert(insert).execute()
+                inserted_count += 1
+
+            results[key] = {
+                "message": f"✅ Inserted {inserted_count} workouts, skipped {skipped_count} existing ones"
             }
-            SUPABASE.table("whoop_workouts").upsert(insert).execute()
-            results[key] = {"message": "✅ Inserted latest workout"}
 
     return {
-        "message": "✅ WHOOP latest data synced successfully",
+        "message": "✅ WHOOP latest data sync completed",
         "details": results,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }

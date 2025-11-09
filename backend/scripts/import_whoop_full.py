@@ -3,8 +3,9 @@ import os
 import time
 import random
 import httpx
-from datetime import datetime
 from supabase import create_client
+from core.convert import to_est_datetime, extract_est_date  # ✅ use shared helpers
+
 
 # =====================================================
 # 🔐 Supabase connection
@@ -24,26 +25,20 @@ with open("whoop_full_data.json", "r") as f:
 
 summary = {}
 
+# =====================================================
+# ⚙️ Utility functions
+# =====================================================
 def to_str(value):
-    if value is None:
-        return None
-    return str(value)
+    return str(value) if value is not None else None
 
 def safe_get(d, key):
     return d.get(key) if isinstance(d, dict) else None
-
-def extract_date(ts):
-    if not ts:
-        return None
-    try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00")).date().isoformat()
-    except Exception:
-        return None
 
 def to_hours(ms):
     return round((ms or 0) / 1000 / 60 / 60, 2)
 
 def batch_upsert(table, data, batch_size=200, retries=3):
+    """Batch upload to Supabase with retry logic."""
     total = len(data)
     for i in range(0, total, batch_size):
         chunk = data[i : i + batch_size]
@@ -61,7 +56,7 @@ def batch_upsert(table, data, batch_size=200, retries=3):
                 break
 
 # =====================================================
-# 🧹 Truncate old data (optional but clean)
+# 🧹 Clear old WHOOP data (optional)
 # =====================================================
 print("🧹 Clearing existing WHOOP tables...")
 for tbl in ["whoop_recovery", "whoop_sleep", "whoop_workouts"]:
@@ -71,19 +66,20 @@ for tbl in ["whoop_recovery", "whoop_sleep", "whoop_workouts"]:
         print(f"⚠️ Could not clear {tbl}: {e}")
 
 # =====================================================
-# 🟩 1. Recovery
+# 🟩 1. WHOOP Recovery
 # =====================================================
 recovery = []
 for r in full_data.get("recovery", []):
     score = r.get("score") or {}
     recovery.append({
+        "sleep_id": to_str(r.get("sleep_id")),                     # ✅ PK
         "cycle_id": to_str(r.get("cycle_id")),
         "recovery_score": to_str(safe_get(score, "recovery_score")),
         "resting_heart_rate": to_str(safe_get(score, "resting_heart_rate")),
         "hrv_rmssd_milli": to_str(safe_get(score, "hrv_rmssd_milli")),
         "spo2_percentage": to_str(safe_get(score, "spo2_percentage")),
         "skin_temp_celsius": to_str(safe_get(score, "skin_temp_celsius")),
-        "record_date": extract_date(r.get("created_at")),
+        "record_date": extract_est_date(r.get("created_at")),      # ✅ EST date
     })
 
 if recovery:
@@ -92,7 +88,7 @@ if recovery:
     summary["recovery"] = len(recovery)
 
 # =====================================================
-# 🟩 2. Sleep
+# 🟩 2. WHOOP Sleep
 # =====================================================
 sleep = []
 for s in full_data.get("sleep", []):
@@ -103,11 +99,8 @@ for s in full_data.get("sleep", []):
     sleep.append({
         "id": to_str(s.get("id")),
         "cycle_id": to_str(s.get("cycle_id")),
-        "start": to_str(s.get("start")),
-        "end": to_str(s.get("end")),
-        "timezone_offset": to_str(s.get("timezone_offset")),
-        "nap": str(s.get("nap", False)),
-        "score_state": to_str(s.get("score_state")),
+        "start": to_est_datetime(s.get("start")).isoformat() if s.get("start") else None,  # ✅ converted
+        "end": to_est_datetime(s.get("end")).isoformat() if s.get("end") else None,        # ✅ converted
         "sleep_performance_percentage": to_str(safe_get(score, "sleep_performance_percentage")),
         "sleep_efficiency_percentage": to_str(safe_get(score, "sleep_efficiency_percentage")),
         "sleep_consistency_percentage": to_str(safe_get(score, "sleep_consistency_percentage")),
@@ -122,7 +115,7 @@ for s in full_data.get("sleep", []):
         "baseline_need_hours": str(to_hours(safe_get(needed, "baseline_milli"))),
         "need_from_sleep_debt_hours": str(to_hours(safe_get(needed, "need_from_sleep_debt_milli"))),
         "need_from_strain_hours": str(to_hours(safe_get(needed, "need_from_recent_strain_milli"))),
-        "record_date": extract_date(s.get("end")),
+        "record_date": extract_est_date(s.get("end")),  # ✅ EST date from sleep end
     })
 
 if sleep:
@@ -131,7 +124,7 @@ if sleep:
     summary["sleep"] = len(sleep)
 
 # =====================================================
-# 🟩 3. Workouts
+# 🟩 3. WHOOP Workouts
 # =====================================================
 workouts = []
 for w in full_data.get("workouts", []):
@@ -145,7 +138,7 @@ for w in full_data.get("workouts", []):
         "kilojoule": to_str(safe_get(score, "kilojoule")),
         "distance_meter": to_str(safe_get(score, "distance_meter")),
         "altitude_gain_meter": to_str(safe_get(score, "altitude_gain_meter")),
-        "record_date": extract_date(w.get("end")),
+        "record_date": extract_est_date(w.get("end")),  # ✅ EST local date
     })
 
 if workouts:
