@@ -311,6 +311,38 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
+      {/* Manage Attributes Card */}
+      <Card
+        sx={{
+          mb: 4,
+          background: "#181818",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 3,
+        }}
+      >
+        <CardContent sx={{ textAlign: "center" }}>
+          <Typography variant="h6" gutterBottom>
+            Attribute Management
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Add, edit, or remove the tracked attributes shown in daily entries.
+          </Typography>
+          <Button
+            variant="contained"
+            onClick={() => router.push("/admin/manage-attributes")}
+            sx={{
+              textTransform: "none",
+              background: "linear-gradient(135deg, #00C6FF 0%, #0072FF 100%)",
+              "&:hover": {
+                background: "linear-gradient(135deg, #0099FF 0%, #0066FF 100%)",
+              },
+            }}
+          >
+            Manage Attributes
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Entries List */}
       <Paper
         sx={{
