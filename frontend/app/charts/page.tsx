@@ -25,8 +25,10 @@ import {
   useMediaQuery,
   useTheme,
   Fade,
+  Button,
 } from "@mui/material";
 import { useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend);
@@ -42,6 +44,7 @@ export default function ChartsPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const api = process.env.NEXT_PUBLIC_API_URL;
+  const router = useRouter();
 
   // =====================================================
   // Fetch once
@@ -331,16 +334,36 @@ export default function ChartsPage() {
   if (!data)
     return (
       <Container sx={{ py: 8, textAlign: "center" }}>
-        <Typography color="text.secondary">No WHOOP analytics data available.</Typography>
+        <Typography color="text.secondary">No analytics data available.</Typography>
       </Container>
     );
 
   return (
     <Container maxWidth="xl" sx={{ py: 6 }}>
+      {/* 🔙 Back to Home */}
+      <Box sx={{ mb: 4, display: "flex", justifyContent: "flex-start" }}>
+        <Button
+          variant="contained"
+          onClick={() => router.push("/")}
+          sx={{
+            textTransform: "none",
+            background: "linear-gradient(135deg, #00C6FF 0%, #0072FF 100%)",
+            "&:hover": {
+              background: "linear-gradient(135deg, #0099FF 0%, #0066FF 100%)",
+            },
+            borderRadius: 2,
+            fontWeight: 500,
+            px: 3,
+          }}
+        >
+          ← Back to Home
+        </Button>
+      </Box>
+
       {/* Header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={4}>
         <Typography variant="h4" sx={{ fontWeight: 700 }}>
-          WHOOP Analytics
+          Analytics
         </Typography>
         <ToggleButtonGroup value={range} exclusive onChange={handleRangeChange} size="small" color="primary">
           <ToggleButton value="7d">7D</ToggleButton>

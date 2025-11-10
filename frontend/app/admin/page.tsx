@@ -138,7 +138,7 @@ export default function AdminDashboard() {
   const syncWhoopData = async () => {
     setSyncing(true);
     try {
-      const res = await fetch(`${api}/whoop/sync/latest`, { method: "POST" });
+      const res = await fetch(`${api}/whoop/latest`, { method: "POST" });
       const data = await res.json();
       alert(data.message || "WHOOP data synced successfully!");
       await fetchWhoopData();
@@ -202,6 +202,26 @@ export default function AdminDashboard() {
   // =====================================================
   return (
     <Container maxWidth="md" sx={{ py: isMobile ? 3 : 6, position: "relative" }}>
+      {/* 🔙 Back to Home */}
+      <Box sx={{ mb: 3, display: "flex", justifyContent: "flex-start" }}>
+        <Button
+          variant="contained"
+          onClick={() => router.push("/")}
+          sx={{
+            textTransform: "none",
+            background: "linear-gradient(135deg, #00C6FF 0%, #0072FF 100%)",
+            "&:hover": {
+              background: "linear-gradient(135deg, #0099FF 0%, #0066FF 100%)",
+            },
+            borderRadius: 2,
+            fontWeight: 500,
+            px: 3,
+          }}
+        >
+          ← Back to Home
+        </Button>
+      </Box>
+
       {/* ➕ Floating New Entry Button */}
       <Tooltip title="Add New Entry">
         <Fab
@@ -355,7 +375,6 @@ export default function AdminDashboard() {
           Daily Entries
         </Typography>
         <Divider sx={{ mb: 2, opacity: 0.2 }} />
-
         {loading ? (
           <Typography>Loading...</Typography>
         ) : entries.length === 0 ? (
@@ -373,7 +392,6 @@ export default function AdminDashboard() {
                   day: "numeric",
                 })}
               </Typography>
-
               <Stack spacing={2}>
                 {dayEntries.map((entry) => (
                   <Paper
@@ -404,7 +422,6 @@ export default function AdminDashboard() {
                             ? "☀️ Morning Entry"
                             : "🌙 Evening Entry"}
                         </Typography>
-
                         <Typography variant="body2" color="text.secondary">
                           {entry.attributes.length} attributes
                         </Typography>
@@ -455,7 +472,6 @@ export default function AdminDashboard() {
                             />
                           </span>
                         </Tooltip>
-
                         <Tooltip title="Edit Entry">
                           <IconButton
                             color="primary"
@@ -466,7 +482,6 @@ export default function AdminDashboard() {
                             <EditIcon />
                           </IconButton>
                         </Tooltip>
-
                         <Tooltip title="Delete Entry">
                           <IconButton
                             color="error"
@@ -475,7 +490,6 @@ export default function AdminDashboard() {
                             <DeleteIcon />
                           </IconButton>
                         </Tooltip>
-
                         {entry.visibility === "public" && (
                           <Tooltip title="View Public Page">
                             <IconButton color="secondary">
@@ -485,7 +499,6 @@ export default function AdminDashboard() {
                         )}
                       </Stack>
                     </Stack>
-
                     {/* Notes */}
                     {entry.notes && entry.notes.length > 0 && (
                       <Box mt={1.5}>
